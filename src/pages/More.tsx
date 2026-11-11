@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { exportAll, importAll } from '../db'
 import { decodeBytes, exportProductsCsv, importProductsCsv } from '../csv'
 import { useI18n, type Lang } from '../i18n'
@@ -61,6 +62,10 @@ export default function More() {
     <div className="page">
       <h1>{t('moreTitle')}</h1>
       {msg && <div className="notice ok">{msg}</div>}
+
+      <Link className="btn big block" to="/labels">
+        🏷 {t('openLabels')}
+      </Link>
 
       <div className="card">
         <b>{t('language')}</b>

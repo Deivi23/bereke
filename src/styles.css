@@ -140,14 +140,34 @@ label.inline input { width: 70px; margin: 0; }
   box-shadow: 0 4px 18px rgba(0, 0, 0, 0.12);
 }
 
+/* Продажи и долги */
+.mt { margin-top: 10px; }
+.grand { font-size: 1.8rem; font-weight: 800; }
+.debt { color: var(--danger); }
+.paid { color: var(--accent); }
+.warn { color: #b7791f; }
+.summary { text-align: center; }
+.line-sum { text-align: right; }
+.qty { display: flex; align-items: center; gap: 6px; }
+.qty .btn { padding: 0; width: 44px; font-size: 1.3rem; }
+.qty input { width: 76px; text-align: center; margin: 0; font-weight: 700; }
+.pay-buttons { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+.pay-buttons .btn { padding: 8px 4px; font-size: 0.95rem; flex-direction: column; line-height: 1.2; }
+.btn.debt-btn { background: #8a5a14; }
+.btn:disabled { opacity: 0.45; }
+a.btn { text-decoration: none; }
+.modal { position: fixed; inset: 0; z-index: 30; background: rgba(0, 0, 0, 0.5); display: flex; align-items: flex-end; justify-content: center; }
+.modal-body { background: var(--bg); width: 100%; max-width: 720px; max-height: 88dvh; overflow-y: auto; border-radius: 18px 18px 0 0; padding: 14px 14px calc(18px + env(safe-area-inset-bottom)); }
+.modal-body h2 { margin-top: 4px; }
+
 /* Нижнее меню */
 .tabbar {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 10;
-  display: grid; grid-template-columns: repeat(5, 1fr);
+  display: grid; grid-template-columns: repeat(6, 1fr);
   background: var(--card); border-top: 1px solid var(--line);
   padding-bottom: env(safe-area-inset-bottom);
 }
-.tab { display: flex; flex-direction: column; align-items: center; justify-content: center; height: var(--tab-h); gap: 2px; color: var(--muted); text-decoration: none; font-size: 0.72rem; }
+.tab { display: flex; flex-direction: column; align-items: center; justify-content: center; height: var(--tab-h); gap: 2px; color: var(--muted); text-decoration: none; font-size: 0.68rem; min-width: 0; }
 .tab .ico { font-size: 1.25rem; line-height: 1; }
 .tab.active { color: var(--accent); font-weight: 700; }
 
