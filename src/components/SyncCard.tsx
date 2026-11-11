@@ -33,7 +33,7 @@ export default function SyncCard() {
 
   return (
     <div className="card">
-      <b>☁ {t('syncTitle')}</b>
+      <b>{t('syncTitle')}</b>
       <p className="muted small">{t('syncHint')}</p>
 
       {!cfg && (
@@ -77,7 +77,7 @@ export default function SyncCard() {
           </p>
           <p className={status.state === 'error' ? 'small debt' : 'small'}>
             {status.state === 'syncing' && t('syncRunning')}
-            {status.state === 'idle' && status.pending === 0 && `✓ ${t('syncOk')}`}
+            {status.state === 'idle' && status.pending === 0 && t('syncOk')}
             {status.state === 'idle' && status.pending > 0 && `${t('syncWaiting')}: ${status.pending}`}
             {status.state === 'offline' && t('syncOffline')}
             {status.state === 'error' && `${t('syncError')}: ${status.error}`}

@@ -3,6 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { db, markLabelsPrinted, type Product } from '../db'
 import { money, useI18n } from '../i18n'
 import BarcodeSvg from '../components/BarcodeSvg'
+import { Printer, Check, X } from 'lucide-react'
 
 interface Item {
   product: Product
@@ -101,7 +102,7 @@ export default function Labels() {
                 />
               </label>
               <button className="link" onClick={() => setItems(items.filter((_, j) => j !== idx))}>
-                ✕
+                <X className="ico sm" />
               </button>
             </div>
           </div>
@@ -114,14 +115,14 @@ export default function Labels() {
             </p>
             <div className="row">
               <button className="btn big grow" onClick={() => window.print()}>
-                🖨 {t('print')}
+                <Printer className="ico" /> {t('print')}
               </button>
               <button className="btn secondary" onClick={() => setItems([])}>
                 {t('clearList')}
               </button>
             </div>
             <button className="btn secondary block" onClick={markPrinted}>
-              ✓ {t('markPrinted')}
+              <Check className="ico" /> {t('markPrinted')}
             </button>
           </>
         )}

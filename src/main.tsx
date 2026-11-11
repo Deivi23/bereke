@@ -6,6 +6,7 @@ import { I18nProvider } from './i18n'
 import { migrateLegacy } from './db'
 import { initSync } from './syncRuntime'
 import App from './App'
+import '@fontsource-variable/geologica/wght.css'
 import './styles.css'
 
 registerSW({ immediate: true })

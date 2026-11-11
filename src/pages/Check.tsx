@@ -5,6 +5,7 @@ import { money, qtyText, useI18n } from '../i18n'
 import { beep } from '../feedback'
 import Scanner from '../components/Scanner'
 import CodeInput from '../components/CodeInput'
+import { Camera } from 'lucide-react'
 
 type Result = { code: string; product?: Product } | null
 
@@ -36,7 +37,7 @@ export default function Check() {
         </>
       ) : (
         <button className="btn big block" onClick={() => setCamera(true)}>
-          📷 {t('startCamera')}
+          <Camera className="ico" /> {t('startCamera')}
         </button>
       )}
 

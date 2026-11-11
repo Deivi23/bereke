@@ -1,7 +1,7 @@
 import Dexie, { type DexieOptions, type Table } from 'dexie'
 
 export type Unit = 'pcs' | 'kg'
-export type Kind = 'product' | 'receipt' | 'customer' | 'sale' | 'ledger' | 'move'
+export type Kind = 'product' | 'receipt' | 'customer' | 'sale' | 'ledger' | 'move' | 'refund' | 'shift'
 
 export interface Product {
   id: string
@@ -20,6 +20,8 @@ export interface Product {
   priceChangedAt: number
   /** Когда ценник печатали в последний раз */
   labelPrintedAt: number
+  /** Быстрая кнопка на кассе */
+  quick?: boolean
 }
 
 export interface ReceiptItem {
@@ -62,7 +64,10 @@ export interface Sale {
   cash: number
   card: number
   debt: number
+  /** Скидка на весь чек в тенге (total уже с учётом скидки) */
+  discount?: number
   customerId?: string
+  shiftId?: string
 }
 
 /** Запись в долговой книге: долг клиента или его оплата. */
@@ -74,6 +79,33 @@ export interface LedgerEntry {
   amount: number
   saleId?: string
   note: string
+  /** Для оплат долга: чем заплатили */
+  method?: 'cash' | 'card'
+  shiftId?: string
+}
+
+/** Возврат товара по проданному чеку. */
+export interface Refund {
+  id: string
+  saleId: string
+  date: number
+  items: SaleItem[]
+  total: number
+  /** cash/card — деньги вернули; debt — списали с долга клиента */
+  method: 'cash' | 'card' | 'debt'
+  customerId?: string
+  shiftId?: string
+}
+
+/** Кассовая смена. */
+export interface Shift {
+  id: string
+  openedAt: number
+  closedAt?: number
+  openingCash: number
+  countedCash?: number
+  note: string
+  updatedAt: number
 }
 
 /** Неизменяемое движение остатка: приход, продажа, корректировка. */
@@ -82,7 +114,7 @@ export interface StockMove {
   productId: string
   delta: number
   date: number
-  reason: 'initial' | 'adjust' | 'receipt' | 'sale'
+  reason: 'initial' | 'adjust' | 'receipt' | 'sale' | 'return'
   refId?: string
 }
 
@@ -113,9 +145,11 @@ export const KIND_TABLE = {
   sale: 'sales',
   ledger: 'ledger',
   move: 'moves',
+  refund: 'refunds',
+  shift: 'shifts',
 } as const
 
-const KIND_ORDER: Kind[] = ['product', 'customer', 'receipt', 'sale', 'ledger', 'move']
+const KIND_ORDER: Kind[] = ['product', 'customer', 'shift', 'receipt', 'sale', 'ledger', 'refund', 'move']
 
 export class BerekeDB extends Dexie {
   products!: Table<Product, string>
@@ -124,6 +158,8 @@ export class BerekeDB extends Dexie {
   sales!: Table<Sale, string>
   ledger!: Table<LedgerEntry, string>
   moves!: Table<StockMove, string>
+  refunds!: Table<Refund, string>
+  shifts!: Table<Shift, string>
   outbox!: Table<OutboxItem, string>
   meta!: Table<{ key: string; value: unknown }, string>
 
@@ -138,6 +174,12 @@ export class BerekeDB extends Dexie {
       moves: 'id, productId, refId',
       outbox: 'key',
       meta: 'key',
+    })
+    this.version(2).stores({
+      sales: 'id, date, customerId, shiftId',
+      ledger: 'id, customerId, date, saleId, shiftId',
+      refunds: 'id, saleId, date, shiftId',
+      shifts: 'id, openedAt',
     })
   }
 }
@@ -252,7 +294,7 @@ export type Store = ReturnType<typeof createStore>
 
 /** Все операции с данными. Принимает базу, чтобы в тестах можно было создать «два устройства». */
 export function createStore(db: BerekeDB) {
-  const ALL = () => [db.products, db.receipts, db.customers, db.sales, db.ledger, db.moves, db.outbox]
+  const ALL = () => [db.products, db.receipts, db.customers, db.sales, db.ledger, db.moves, db.refunds, db.shifts, db.outbox]
 
   const queue = (kind: Kind, id: string, deleted = false) =>
     db.outbox.put({ key: `${kind}:${id}`, kind, id, deleted, ts: Date.now() + Math.random() })
@@ -359,12 +401,15 @@ export function createStore(db: BerekeDB) {
   /** Проводит продажу: списывает остатки, при долге записывает его в книгу клиента. */
   async function completeSale(
     lines: SaleLine[],
-    pay: { cash: number; card: number; debt: number; customerId?: string },
+    pay: { cash: number; card: number; debt: number; customerId?: string; discount?: number },
   ): Promise<string> {
-    const total = lines.reduce((s, l) => s + Math.round(l.qty * l.price), 0)
+    const subtotal = lines.reduce((s, l) => s + Math.round(l.qty * l.price), 0)
+    const discount = Math.min(Math.max(Math.round(pay.discount ?? 0), 0), subtotal)
+    const total = subtotal - discount
     return db.transaction('rw', ALL(), async () => {
       const now = Date.now()
       const saleId = uuid()
+      const shift = await currentShift()
       for (const l of lines) await addMove(l.product.id, -l.qty, 'sale', saleId)
       const names = lines.map((l) => l.product.name)
       const note = names.slice(0, 3).join(', ') + (names.length > 3 ? ` +${names.length - 3}` : '')
@@ -375,7 +420,9 @@ export function createStore(db: BerekeDB) {
         cash: pay.cash,
         card: pay.card,
         debt: pay.debt,
+        discount,
         customerId: pay.customerId,
+        shiftId: shift?.id,
         items: lines.map((l) => ({
           productId: l.product.id,
           name: l.product.name,
@@ -399,6 +446,7 @@ export function createStore(db: BerekeDB) {
     await db.transaction('rw', ALL(), async () => {
       const sale = await db.sales.get(saleId)
       if (!sale) return
+      if ((await db.refunds.where('saleId').equals(saleId).count()) > 0) return
       const moves = await db.moves.where('refId').equals(saleId).toArray()
       for (const m of moves) {
         await bumpStock(m.productId, -m.delta)
@@ -446,11 +494,102 @@ export function createStore(db: BerekeDB) {
     })
   }
 
-  async function addLedger(customerId: string, type: 'debt' | 'payment', amount: number, note = '') {
+  async function addLedger(
+    customerId: string,
+    type: 'debt' | 'payment',
+    amount: number,
+    note = '',
+    method?: 'cash' | 'card',
+  ) {
     await db.transaction('rw', ALL(), async () => {
       const id = uuid()
-      await db.ledger.add({ id, customerId, date: Date.now(), type, amount, note })
+      const shift = type === 'payment' ? await currentShift() : undefined
+      await db.ledger.add({ id, customerId, date: Date.now(), type, amount, note, method, shiftId: shift?.id })
       await queue('ledger', id)
+    })
+  }
+
+  // ---------- Смены и возвраты ----------
+
+  /** Открытая смена (если есть). */
+  async function currentShift(): Promise<Shift | undefined> {
+    const open = await db.shifts.filter((s) => !s.closedAt).toArray()
+    return open.sort((a, b) => b.openedAt - a.openedAt)[0]
+  }
+
+  async function openShift(openingCash: number): Promise<Shift | undefined> {
+    return db.transaction('rw', ALL(), async () => {
+      if (await currentShift()) return undefined
+      const now = Date.now()
+      const s: Shift = { id: uuid(), openedAt: now, openingCash, note: '', updatedAt: now }
+      await db.shifts.add(s)
+      await queue('shift', s.id)
+      return s
+    })
+  }
+
+  async function closeShift(id: string, countedCash: number, note = '') {
+    await db.transaction('rw', ALL(), async () => {
+      const s = await db.shifts.get(id)
+      if (!s || s.closedAt) return
+      const now = Date.now()
+      await db.shifts.put({ ...s, closedAt: now, countedCash, note, updatedAt: now })
+      await queue('shift', id)
+    })
+  }
+
+  /** Сколько штук каждого товара уже возвращено по чеку. */
+  async function returnedQty(saleId: string): Promise<Map<string, number>> {
+    const m = new Map<string, number>()
+    for (const r of await db.refunds.where('saleId').equals(saleId).toArray())
+      for (const it of r.items) m.set(it.productId, round3((m.get(it.productId) ?? 0) + it.qty))
+    return m
+  }
+
+  /** Возврат: товар возвращается на склад; деньги отдаются или списываются с долга клиента. */
+  async function createRefund(
+    saleId: string,
+    lines: { productId: string; qty: number }[],
+    method: 'cash' | 'card' | 'debt',
+  ): Promise<string | undefined> {
+    return db.transaction('rw', ALL(), async () => {
+      const sale = await db.sales.get(saleId)
+      if (!sale) return undefined
+      const already = await returnedQty(saleId)
+      const items: SaleItem[] = []
+      for (const l of lines) {
+        const src = sale.items.find((i) => i.productId === l.productId)
+        if (!src || l.qty <= 0) continue
+        const left = round3(src.qty - (already.get(l.productId) ?? 0))
+        const qty = Math.min(l.qty, left)
+        if (qty > 0) items.push({ ...src, qty })
+      }
+      if (!items.length) return undefined
+      // Скидка на чек возвращается пропорционально
+      const subtotal = sale.items.reduce((s, i) => s + Math.round(i.qty * i.price), 0)
+      const k = subtotal > 0 ? 1 - (sale.discount ?? 0) / subtotal : 1
+      const total = Math.round(items.reduce((s, i) => s + Math.round(i.qty * i.price), 0) * k)
+      const now = Date.now()
+      const id = uuid()
+      const shift = await currentShift()
+      await db.refunds.add({ id, saleId, date: now, items, total, method, customerId: sale.customerId, shiftId: shift?.id })
+      await queue('refund', id)
+      for (const it of items) await addMove(it.productId, it.qty, 'return', id)
+      if (method === 'debt' && sale.customerId) {
+        const eid = uuid()
+        await db.ledger.add({ id: eid, customerId: sale.customerId, date: now, type: 'payment', amount: total, note: 'Возврат товара' })
+        await queue('ledger', eid)
+      }
+      return id
+    })
+  }
+
+  async function setQuick(productId: string, quick: boolean) {
+    await db.transaction('rw', ALL(), async () => {
+      const p = await db.products.get(productId)
+      if (!p) return
+      await db.products.put({ ...p, quick, updatedAt: Date.now() })
+      await queue('product', productId)
     })
   }
 
@@ -515,22 +654,25 @@ export function createStore(db: BerekeDB) {
         }
         return false
       }
-      case 'customer': {
+      case 'customer':
+      case 'shift': {
+        const t = db.table(KIND_TABLE[kind])
         if (deleted) {
-          const had = await db.customers.get(id)
-          if (had) await db.customers.delete(id)
+          const had = await t.get(id)
+          if (had) await t.delete(id)
           return !!had
         }
-        const incoming = row.data as Customer
-        const local = await db.customers.get(id)
+        const incoming = row.data as { updatedAt?: number }
+        const local = await t.get(id)
         if (!local || (incoming.updatedAt ?? 0) > local.updatedAt) {
-          await db.customers.put({ ...incoming, id })
+          await t.put({ ...row.data, id })
           return true
         }
         return false
       }
       case 'receipt':
       case 'sale':
+      case 'refund':
       case 'ledger': {
         const t = db.table(KIND_TABLE[kind])
         if (deleted) {
@@ -639,6 +781,12 @@ export function createStore(db: BerekeDB) {
     commitReceipt,
     completeSale,
     voidSale,
+    currentShift,
+    openShift,
+    closeShift,
+    returnedQty,
+    createRefund,
+    setQuick,
     createCustomer,
     updateCustomer,
     deleteCustomer,
@@ -664,6 +812,12 @@ export const {
   commitReceipt,
   completeSale,
   voidSale,
+  currentShift,
+  openShift,
+  closeShift,
+  returnedQty,
+  createRefund,
+  setQuick,
   createCustomer,
   updateCustomer,
   deleteCustomer,

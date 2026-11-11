@@ -6,6 +6,7 @@ import { beep } from '../feedback'
 import Scanner from '../components/Scanner'
 import CodeInput from '../components/CodeInput'
 import { num } from './ProductForm'
+import { Camera, Check, X } from 'lucide-react'
 
 interface Line {
   product: Product
@@ -113,7 +114,7 @@ export default function Receive() {
         </>
       ) : (
         <button className="btn big block" onClick={() => setCamera(true)}>
-          📷 {t('startCamera')}
+          <Camera className="ico" /> {t('startCamera')}
         </button>
       )}
       <div className="gap" />
@@ -157,7 +158,7 @@ export default function Receive() {
         </div>
       )}
 
-      {done && <div className="notice ok">✓ {t('receiptDone')}</div>}
+      {done && <div className="notice ok"><Check className="ico" /> {t('receiptDone')}</div>}
 
       {lines.length === 0 && !done && <p className="muted center">{t('emptyReceipt')}</p>}
 
@@ -170,7 +171,7 @@ export default function Receive() {
             <div className="row between">
               <b>{l.product.name}</b>
               <button className="link" onClick={() => setLines(lines.filter((_, j) => j !== i))}>
-                ✕
+                <X className="ico sm" />
               </button>
             </div>
             <div className="grid3">

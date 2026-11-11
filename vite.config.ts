@@ -12,7 +12,7 @@ export default defineConfig({
       includeAssets: ['icon.svg'],
       workbox: {
         // wasm-сканер должен быть доступен без интернета
-        globPatterns: ['**/*.{js,css,html,svg,wasm,png}'],
+        globPatterns: ['**/*.{js,css,html,svg,wasm,png,woff2}'],
         maximumFileSizeToCacheInBytes: 8 * 1024 * 1024,
       },
       manifest: {
@@ -20,8 +20,8 @@ export default defineConfig({
         short_name: 'Береке',
         description: 'Учёт товаров, цены и ценники для магазина',
         lang: 'ru',
-        theme_color: '#1f7a4d',
-        background_color: '#f4f6f4',
+        theme_color: '#0f2a3d',
+        background_color: '#eef3f5',
         display: 'standalone',
         start_url: '.',
         icons: [

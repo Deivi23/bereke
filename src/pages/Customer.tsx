@@ -4,6 +4,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { addLedger, balanceOf, db, deleteCustomer, updateCustomer } from '../db'
 import { fmtDate, money, useI18n } from '../i18n'
 import { num } from './ProductForm'
+import { ArrowLeft, MessageCircle, Phone } from 'lucide-react'
 
 /** Телефон в формате для ссылки WhatsApp (Казахстан: +7). */
 function waNumber(phone: string): string {
@@ -23,6 +24,7 @@ export default function Customer() {
   const entries = useLiveQuery(() => db.ledger.where('customerId').equals(id).toArray(), [id])
   const [panel, setPanel] = useState<Panel>(null)
   const [amount, setAmount] = useState('')
+  const [method, setMethod] = useState<'cash' | 'card'>('cash')
   const [note, setNote] = useState('')
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
@@ -50,7 +52,7 @@ export default function Customer() {
   const submit = async () => {
     const v = num(amount)
     if (v <= 0) return
-    if (panel === 'pay') await addLedger(id, 'payment', v, note)
+    if (panel === 'pay') await addLedger(id, 'payment', v, note, method)
     if (panel === 'debt') await addLedger(id, 'debt', v, note || t('oldDebtNote'))
     setPanel(null)
     setAmount('')
@@ -70,8 +72,8 @@ export default function Customer() {
 
   return (
     <div className="page">
-      <Link to="/debts" className="muted small">
-        ← {t('debtsTitle')}
+      <Link to="/debts" className="back">
+        <ArrowLeft className="ico sm" /> {t('debtsTitle')}
       </Link>
       <h1>{customer.name}</h1>
       {customer.phone && <div className="muted">{customer.phone}</div>}
@@ -101,6 +103,16 @@ export default function Customer() {
               {t('fullAmount')}: {money(balance)}
             </button>
           )}
+          {panel === 'pay' && (
+            <div className="chips">
+              <button className={method === 'cash' ? 'chip active' : 'chip'} onClick={() => setMethod('cash')}>
+                {t('payCash')}
+              </button>
+              <button className={method === 'card' ? 'chip active' : 'chip'} onClick={() => setMethod('card')}>
+                {t('payCard')}
+              </button>
+            </div>
+          )}
           <label>
             {t('note')}
             <input
@@ -123,10 +135,10 @@ export default function Customer() {
       {balance > 0 && wa && (
         <div className="grid2 mt">
           <a className="btn secondary" href={`https://wa.me/${wa}?text=${encodeURIComponent(reminder)}`} target="_blank" rel="noreferrer">
-            💬 {t('remind')}
+            <MessageCircle className="ico" /> {t('remind')}
           </a>
           <a className="btn secondary" href={`tel:+${wa}`}>
-            📞 {t('call')}
+            <Phone className="ico" /> {t('call')}
           </a>
         </div>
       )}

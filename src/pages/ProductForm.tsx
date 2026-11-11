@@ -4,6 +4,7 @@ import { db, deleteProduct, findByBarcode, newProduct, saveProduct, type Product
 import { generateInternalCode } from '../barcode'
 import { money, useI18n } from '../i18n'
 import Scanner from '../components/Scanner'
+import { Camera, X } from 'lucide-react'
 
 export const num = (s: string): number => {
   const v = parseFloat(s.replace(',', '.').replace(/\s/g, ''))
@@ -28,6 +29,7 @@ export default function ProductForm() {
   const [sell, setSell] = useState('')
   const [stock, setStock] = useState('')
   const [minStock, setMinStock] = useState('')
+  const [quick, setQuick] = useState(false)
   const [codes, setCodes] = useState<string[]>(base.barcodes)
   const [newCode, setNewCode] = useState('')
   const [scanning, setScanning] = useState(false)
@@ -50,6 +52,7 @@ export default function ProductForm() {
       setSell(p.sellPrice ? String(p.sellPrice) : '')
       setStock(String(p.stock))
       setMinStock(p.minStock ? String(p.minStock) : '')
+      setQuick(!!p.quick)
       setCodes(p.barcodes)
       setLoaded(true)
     })
@@ -94,6 +97,7 @@ export default function ProductForm() {
       stock: num(stock),
       minStock: num(minStock),
       barcodes: codes,
+      quick,
     })
     nav('/products', { replace: true })
   }
@@ -135,7 +139,7 @@ export default function ProductForm() {
           <div className="code-row" key={c}>
             <code>{c}</code>
             <button className="link" onClick={() => setCodes(codes.filter((x) => x !== c))}>
-              ✕
+              <X className="ico sm" />
             </button>
           </div>
         ))}
@@ -153,7 +157,7 @@ export default function ProductForm() {
         </div>
         <div className="row">
           <button className="btn secondary" onClick={() => setScanning(!scanning)}>
-            📷 {t('scanBarcode')}
+            <Camera className="ico" /> {t('scanBarcode')}
           </button>
           <button className="btn secondary" onClick={makeCode}>
             {t('generateCode')}
@@ -204,6 +208,11 @@ export default function ProductForm() {
           <input inputMode="decimal" value={minStock} onChange={(e) => setMinStock(e.target.value)} />
         </label>
       </div>
+
+      <label className="check">
+        <input type="checkbox" checked={quick} onChange={(e) => setQuick(e.target.checked)} />
+        {t('quickButton')}
+      </label>
 
       <div className="row">
         <button className="btn grow" onClick={save}>

@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import { Cloud } from 'lucide-react'
 import { getSyncConfig } from '../syncConfig'
 import { useSession, useSyncStatus } from '../syncRuntime'
 import { useI18n } from '../i18n'
@@ -23,11 +24,11 @@ export default function SyncBadge() {
     text = t('syncError')
     cls += ' bad'
   } else if (status.pending > 0) text = `${t('syncWaiting')}: ${status.pending}`
-  else text = `✓ ${t('syncOk')}`
+  else text = t('syncOk')
 
   return (
-    <Link to="/more" className={cls}>
-      ☁ {text}
+    <Link to="/settings" className={cls}>
+      <Cloud className="ico sm" /> {text}
     </Link>
   )
 }

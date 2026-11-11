@@ -10,11 +10,13 @@
     "test:sync": "tsx scripts/sync-test.ts"
   },
   "dependencies": {
+    "@fontsource-variable/geologica": "^5.3.0",
     "@supabase/supabase-js": "^2.119.0",
     "barcode-detector": "^3.2.3",
     "dexie": "^4.4.7",
     "dexie-react-hooks": "^4.4.0",
     "jsbarcode": "^3.12.3",
+    "lucide-react": "^1.72.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "react-router-dom": "^7.18.5"

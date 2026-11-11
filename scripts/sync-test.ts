@@ -190,6 +190,44 @@ async function main() {
   await G.store.importAll(json)
   eq([await G.db.products.count(), await G.db.moves.count()], [2, 1], '12. повторная загрузка копии не дублирует данные')
 
+  // 13. Смены, скидки, возвраты, быстрые кнопки
+  const server3 = new FakeServer()
+  const H = device('H', server3)
+  const I = device('I', server3)
+  const milk13 = newProduct({ name: 'Кефир', barcodes: ['901'], sellPrice: 500, buyPrice: 300, stock: 10 })
+  await H.store.saveProduct(milk13)
+  await H.sync()
+  await I.sync()
+  const sh13 = (await H.store.openShift(10000))!
+  eq(await H.store.openShift(5), undefined, '13. вторую смену открыть нельзя, пока открыта первая')
+  const sale13 = await H.store.completeSale([{ product: milk13, qty: 4, price: 500 }], { cash: 1000, card: 500, debt: 0, discount: 200 })
+  const sl13 = (await H.db.sales.get(sale13))!
+  eq([sl13.total, sl13.discount, sl13.shiftId === sh13.id], [1800, 200, true], '13. скидка вычтена из итога, продажа привязана к смене')
+  const refundId = await H.store.createRefund(sale13, [{ productId: milk13.id, qty: 1 }], 'cash')
+  eq((await H.db.refunds.get(refundId!))?.total, 450, '13. возврат считает скидку пропорционально (500 − 10%)')
+  eq(await H.store.createRefund(sale13, [{ productId: milk13.id, qty: 10 }], 'cash').then(async (id) => (await H.db.refunds.get(id!))?.items[0].qty), 3, '13. нельзя вернуть больше, чем продано')
+  eq(await H.store.createRefund(sale13, [{ productId: milk13.id, qty: 1 }], 'cash'), undefined, '13. всё уже возвращено — нового возврата нет')
+  eq((await H.db.products.get(milk13.id))?.stock, 10, '13. после полного возврата остаток снова 10')
+  await H.store.closeShift(sh13.id, 10900, 'ок')
+  await H.sync()
+  await I.sync()
+  eq([(await I.db.sales.get(sale13))?.discount, await I.db.refunds.count()], [200, 2], '13. продажа со скидкой и возвраты дошли до второго устройства')
+  eq([(await I.db.products.get(milk13.id))?.stock, (await I.db.shifts.get(sh13.id))?.countedCash], [10, 10900], '13. остаток и закрытая смена совпадают на втором устройстве')
+  eq(await I.store.currentShift(), undefined, '13. закрытая смена не считается текущей')
+  // Смена закрыта на I раньше, чем правка на H: побеждает более поздняя запись
+  const s2 = (await H.store.openShift(0))!
+  await H.sync()
+  await I.sync()
+  await sleep(5)
+  await I.store.closeShift(s2.id, 0)
+  await I.sync()
+  await H.sync()
+  eq(!!(await H.db.shifts.get(s2.id))?.closedAt, true, '13. закрытие смены на втором устройстве дошло до первого')
+  await H.store.setQuick(milk13.id, true)
+  await H.sync()
+  await I.sync()
+  eq((await I.db.products.get(milk13.id))?.quick, true, '13. быстрая кнопка синхронизируется')
+
   console.log(failed ? `\nПРОВАЛЕНО: ${failed}` : '\nВсе проверки пройдены')
   process.exit(failed ? 1 : 0)
 }
