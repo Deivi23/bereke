@@ -1,5 +1,6 @@
 import { NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import {
+  BarChart3,
   BookOpen,
   Boxes,
   Clock,
@@ -25,6 +26,7 @@ import Settings from './pages/Settings'
 import Sales from './pages/Sales'
 import SaleDetail from './pages/SaleDetail'
 import Shift from './pages/Shift'
+import Analytics from './pages/Analytics'
 import SyncBadge from './components/SyncBadge'
 
 function Logo() {
@@ -42,7 +44,7 @@ function Logo() {
 export default function App() {
   const { t } = useI18n()
   const { pathname } = useLocation()
-  const moreActive = ['/more', '/labels', '/sales', '/shift', '/check', '/settings'].some((p) => pathname.startsWith(p))
+  const moreActive = ['/more', '/labels', '/analytics', '/sales', '/shift', '/check', '/settings'].some((p) => pathname.startsWith(p))
 
   const side = ({ isActive }: { isActive: boolean }) => (isActive ? 'side-link active' : 'side-link')
   const bottom = ({ isActive }: { isActive: boolean }) => (isActive ? 'bn active' : 'bn')
@@ -67,6 +69,9 @@ export default function App() {
             <BookOpen className="ico" /> {t('navDebts')}
           </NavLink>
           <div className="side-sep" />
+          <NavLink to="/analytics" className={side}>
+            <BarChart3 className="ico" /> {t('navAnalytics')}
+          </NavLink>
           <NavLink to="/sales" className={side}>
             <History className="ico" /> {t('navSales')}
           </NavLink>
@@ -98,6 +103,7 @@ export default function App() {
           <Route path="/debts" element={<Debts />} />
           <Route path="/debts/:id" element={<Customer />} />
           <Route path="/labels" element={<Labels />} />
+          <Route path="/analytics" element={<Analytics />} />
           <Route path="/sales" element={<Sales />} />
           <Route path="/sales/:id" element={<SaleDetail />} />
           <Route path="/shift" element={<Shift />} />

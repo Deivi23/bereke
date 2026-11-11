@@ -131,3 +131,12 @@ export async function exportProductsCsv(): Promise<string> {
   }
   return '﻿' + lines.join('\r\n')
 }
+
+/** Собирает CSV для Excel: разделитель «;», запятая в дробях, BOM для кириллицы. */
+export function buildCsv(rows: (string | number)[][]): string {
+  const cell = (v: string | number) => {
+    const s = typeof v === 'number' ? String(Math.round(v * 1000) / 1000).replace('.', ',') : v
+    return /[;"\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+  }
+  return '﻿' + rows.map((r) => r.map(cell).join(';')).join('\r\n')
+}
