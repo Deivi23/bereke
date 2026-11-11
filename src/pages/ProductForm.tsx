@@ -5,6 +5,8 @@ import { generateInternalCode } from '../barcode'
 import { money, useI18n } from '../i18n'
 import Scanner from '../components/Scanner'
 import { Camera, X } from 'lucide-react'
+import { useLiveQuery } from 'dexie-react-hooks'
+import { parseDate, toInputDate } from '../dates'
 
 export const num = (s: string): number => {
   const v = parseFloat(s.replace(',', '.').replace(/\s/g, ''))
@@ -30,6 +32,9 @@ export default function ProductForm() {
   const [stock, setStock] = useState('')
   const [minStock, setMinStock] = useState('')
   const [quick, setQuick] = useState(false)
+  const [expiry, setExpiry] = useState('')
+  const [supplierId, setSupplierId] = useState('')
+  const suppliers = useLiveQuery(() => db.suppliers.orderBy('name').toArray(), []) ?? []
   const [codes, setCodes] = useState<string[]>(base.barcodes)
   const [newCode, setNewCode] = useState('')
   const [scanning, setScanning] = useState(false)
@@ -53,6 +58,8 @@ export default function ProductForm() {
       setStock(String(p.stock))
       setMinStock(p.minStock ? String(p.minStock) : '')
       setQuick(!!p.quick)
+      setExpiry(toInputDate(p.expiry))
+      setSupplierId(p.supplierId ?? '')
       setCodes(p.barcodes)
       setLoaded(true)
     })
@@ -98,6 +105,8 @@ export default function ProductForm() {
       minStock: num(minStock),
       barcodes: codes,
       quick,
+      expiry: parseDate(expiry),
+      supplierId: supplierId || undefined,
     })
     nav('/products', { replace: true })
   }
@@ -206,6 +215,24 @@ export default function ProductForm() {
         <label>
           {t('minStock')}
           <input inputMode="decimal" value={minStock} onChange={(e) => setMinStock(e.target.value)} />
+        </label>
+      </div>
+
+      <div className="grid2">
+        <label>
+          {t('expiryLabel')}
+          <input type="date" value={expiry} onChange={(e) => setExpiry(e.target.value)} />
+        </label>
+        <label>
+          {t('mainSupplier')}
+          <select value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>
+            <option value="">{t('noSupplier')}</option>
+            {suppliers.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+          </select>
         </label>
       </div>
 

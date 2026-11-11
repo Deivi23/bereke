@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { BarChart3, ChevronRight, Clock, History, ScanBarcode, Settings, Tags } from 'lucide-react'
+import { BarChart3, ChevronRight, Clock, History, ScanBarcode, Settings, Tags, Warehouse } from 'lucide-react'
 import { useI18n } from '../i18n'
 import SyncBadge from '../components/SyncBadge'
 
@@ -7,6 +7,7 @@ import SyncBadge from '../components/SyncBadge'
 export default function More() {
   const { t } = useI18n()
   const items = [
+    { to: '/stock', icon: <Warehouse className="ico" />, label: t('navStock') },
     { to: '/analytics', icon: <BarChart3 className="ico" />, label: t('navAnalytics') },
     { to: '/shift', icon: <Clock className="ico" />, label: t('navShift') },
     { to: '/sales', icon: <History className="ico" />, label: t('navSales') },

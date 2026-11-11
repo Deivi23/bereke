@@ -228,6 +228,88 @@ async function main() {
   await I.sync()
   eq((await I.db.products.get(milk13.id))?.quick, true, '13. быстрая кнопка синхронизируется')
 
+  // 14. Склад: поставщики, списания, инвентаризация, сроки годности, переоценка
+  const server4 = new FakeServer()
+  const J = device('J', server4)
+  const K = device('K', server4)
+  const day = (n: number) => new Date(2030, 0, n).getTime()
+  const rice = newProduct({ name: 'Рис', barcodes: ['902'], sellPrice: 800, buyPrice: 600, stock: 20, minStock: 5 })
+  const salt = newProduct({ name: 'Соль', barcodes: ['903'], sellPrice: 150, buyPrice: 100, stock: 10 })
+  await J.store.saveProduct(rice)
+  await J.store.saveProduct(salt)
+  const supId = await J.store.saveSupplier({ name: 'ИП Алмас', phone: '+77001112233' })
+  await J.sync()
+  await K.sync()
+  eq((await K.db.suppliers.get(supId))?.name, 'ИП Алмас', '14. поставщик дошёл до второго устройства')
+
+  // Приход со сроком годности и поставщиком
+  await K.store.commitReceipt('ИП Алмас', [{ product: (await K.db.products.get(rice.id))!, qty: 10, buyPrice: 610, sellPrice: 800, expiry: day(20) }], supId)
+  let r14 = (await K.db.products.get(rice.id))!
+  eq([r14.stock, r14.expiry, r14.supplierId], [30, day(20), supId], '14. приход записал срок годности и поставщика')
+  // Вторая партия со сроком позже: ближайший срок остаётся прежним
+  await K.store.commitReceipt('', [{ product: r14, qty: 5, buyPrice: 610, sellPrice: 800, expiry: day(25) }])
+  r14 = (await K.db.products.get(rice.id))!
+  eq(r14.expiry, day(20), '14. более поздняя партия не сдвигает ближайший срок')
+
+  // Списание
+  const wo = await K.store.createWriteoff([{ product: r14, qty: 4 }, { product: (await K.db.products.get(salt.id))!, qty: 0 }], 'expired', 'просрочка')
+  const w14 = (await K.db.writeoffs.get(wo!))!
+  eq([w14.items.length, w14.total, (await K.db.products.get(rice.id))?.stock], [1, 2440, 31], '14. списание уменьшило остаток и посчитало потерю (нулевые позиции пропущены)')
+  eq(await K.store.createWriteoff([], 'other'), undefined, '14. пустое списание не создаёт записей')
+  await K.sync()
+  await J.sync()
+  eq([(await J.db.products.get(rice.id))?.stock, await J.db.writeoffs.count(), (await J.db.products.get(rice.id))?.expiry], [31, 1, day(20)], '14. списание и срок годности синхронизировались')
+
+  // Списали весь остаток соли: срок годности сбрасывается
+  const saltCur = (await J.db.products.get(salt.id))!
+  await J.store.saveProduct({ ...saltCur, expiry: day(10) })
+  await J.store.createWriteoff([{ product: (await J.db.products.get(salt.id))!, qty: 10 }], 'damaged')
+  const saltAfter = (await J.db.products.get(salt.id))!
+  eq([saltAfter.stock, saltAfter.expiry], [0, undefined], '14. после списания всего остатка срок годности убран')
+
+  // Инвентаризация: насчитали 25 вместо 31 (недостача 6 по 610 закупки... закупка риса 610)
+  await J.sync()
+  await K.sync()
+  const inv = await K.store.commitInventory([{ productId: rice.id, counted: 25 }])
+  eq([inv?.shortage, inv?.surplus, (await K.db.products.get(rice.id))?.stock], [3660, 0, 25], '14. инвентаризация исправила остаток, недостача 6 × 610')
+  const invRec = (await K.db.inventories.get(inv!.id))!
+  eq([invRec.items[0].expected, invRec.items[0].counted], [31, 25], '14. в инвентаризации записано «было» и «стало»')
+  await K.sync()
+  await J.sync()
+  eq([(await J.db.products.get(rice.id))?.stock, await J.db.inventories.count()], [25, 1], '14. инвентаризация синхронизировалась')
+  eq(await J.store.commitInventory([]), undefined, '14. пустая инвентаризация ничего не делает')
+
+  // Одновременно: J продаёт, K считает. Остатки сходятся через движения
+  const riceJ = (await J.db.products.get(rice.id))!
+  await J.store.completeSale([{ product: riceJ, qty: 2, price: 800 }], { cash: 1600, card: 0, debt: 0 })
+  await K.store.commitInventory([{ productId: rice.id, counted: 20 }])
+  await J.sync()
+  await K.sync()
+  await J.sync()
+  const stockJ = (await J.db.products.get(rice.id))!.stock
+  const stockK = (await K.db.products.get(rice.id))!.stock
+  const sumMoves = (await J.db.moves.where('productId').equals(rice.id).toArray()).reduce((s, m) => s + m.delta, 0)
+  eq([stockJ === stockK, stockJ === sumMoves], [true, true], '14. при одновременной продаже и инвентаризации остатки на устройствах совпадают с суммой движений')
+
+  // Массовая переоценка
+  await K.store.repriceProducts([{ id: rice.id, sellPrice: 900 }, { id: rice.id, sellPrice: 900 }])
+  const repriced14 = (await K.db.products.get(rice.id))!
+  eq([repriced14.sellPrice, repriced14.priceChangedAt > rice.priceChangedAt], [900, true], '14. переоценка меняет цену и помечает ценник к перепечати')
+  await K.sync()
+  await J.sync()
+  eq((await J.db.products.get(rice.id))?.sellPrice, 900, '14. новая цена дошла до второго устройства')
+
+  // Удаление поставщика синхронизируется
+  await J.store.deleteSupplier(supId)
+  await J.sync()
+  await K.sync()
+  eq(await K.db.suppliers.count(), 0, '14. удаление поставщика дошло до второго устройства')
+
+  // Резервная копия содержит новые записи
+  const L = device('L', new FakeServer())
+  await L.store.importAll(await K.store.exportAll())
+  eq([await L.db.writeoffs.count(), await L.db.inventories.count()], [2, 2], '14. резервная копия включает списания и инвентаризации')
+
   console.log(failed ? `\nПРОВАЛЕНО: ${failed}` : '\nВсе проверки пройдены')
   process.exit(failed ? 1 : 0)
 }

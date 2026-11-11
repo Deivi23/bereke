@@ -6,6 +6,7 @@ import { beep } from '../feedback'
 import Scanner from '../components/Scanner'
 import CodeInput from '../components/CodeInput'
 import { num } from './ProductForm'
+import { parseDate } from '../dates'
 import { Camera, Check, X } from 'lucide-react'
 
 interface Line {
@@ -13,6 +14,7 @@ interface Line {
   qty: string
   buy: string
   sell: string
+  expiry: string
 }
 
 interface Draft {
@@ -30,10 +32,13 @@ export default function Receive() {
   const [camera, setCamera] = useState(false)
   const [draft, setDraft] = useState<Draft | null>(null)
   const [done, setDone] = useState(false)
+  const suppliers = useLiveQuery(() => db.suppliers.orderBy('name').toArray(), []) ?? []
   const history = useLiveQuery(() => db.receipts.orderBy('date').reverse().limit(10).toArray(), [])
 
   const addProduct = (product: Product) => {
     setDone(false)
+    const known = suppliers.find((s) => s.id === product.supplierId)
+    if (known) setSupplier((cur) => cur || known.name)
     setLines((ls) => {
       const i = ls.findIndex((l) => l.product.id === product.id)
       if (i >= 0) {
@@ -48,6 +53,7 @@ export default function Receive() {
           qty: '1',
           buy: product.buyPrice ? String(product.buyPrice) : '',
           sell: product.sellPrice ? String(product.sellPrice) : '',
+          expiry: '',
         },
       ]
     })
@@ -82,6 +88,7 @@ export default function Receive() {
   const commit = async () => {
     const valid = lines.filter((l) => num(l.qty) > 0)
     if (!valid.length) return
+    const sup = suppliers.find((s) => s.name.toLowerCase() === supplier.trim().toLowerCase())
     await commitReceipt(
       supplier,
       valid.map((l) => ({
@@ -89,7 +96,9 @@ export default function Receive() {
         qty: num(l.qty),
         buyPrice: num(l.buy),
         sellPrice: num(l.sell),
+        expiry: parseDate(l.expiry),
       })),
+      sup?.id,
     )
     setLines([])
     setSupplier('')
@@ -102,7 +111,12 @@ export default function Receive() {
 
       <label>
         {t('supplier')}
-        <input value={supplier} onChange={(e) => setSupplier(e.target.value)} />
+        <input value={supplier} list="sups" onChange={(e) => setSupplier(e.target.value)} />
+        <datalist id="sups">
+          {suppliers.map((s) => (
+            <option key={s.id} value={s.name} />
+          ))}
+        </datalist>
       </label>
 
       {camera ? (
@@ -188,6 +202,10 @@ export default function Receive() {
                 <input inputMode="decimal" value={l.sell} onChange={(e) => update(i, { sell: e.target.value })} />
               </label>
             </div>
+            <label>
+              {t('expiryLabel')}
+              <input type="date" value={l.expiry} onChange={(e) => update(i, { expiry: e.target.value })} />
+            </label>
             {markup !== null && (
               <div className="muted small">
                 {t('margin')}: {markup}%

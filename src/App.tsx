@@ -7,6 +7,7 @@ import {
   Ellipsis,
   History,
   PackagePlus,
+  Warehouse,
   ScanBarcode,
   Settings as SettingsIcon,
   ShoppingCart,
@@ -27,6 +28,13 @@ import Sales from './pages/Sales'
 import SaleDetail from './pages/SaleDetail'
 import Shift from './pages/Shift'
 import Analytics from './pages/Analytics'
+import Stock from './pages/Stock'
+import Suppliers from './pages/Suppliers'
+import Writeoff from './pages/Writeoff'
+import Expiry from './pages/Expiry'
+import Inventory from './pages/Inventory'
+import Order from './pages/Order'
+import Reprice from './pages/Reprice'
 import SyncBadge from './components/SyncBadge'
 
 function Logo() {
@@ -44,7 +52,7 @@ function Logo() {
 export default function App() {
   const { t } = useI18n()
   const { pathname } = useLocation()
-  const moreActive = ['/more', '/labels', '/analytics', '/sales', '/shift', '/check', '/settings'].some((p) => pathname.startsWith(p))
+  const moreActive = ['/more', '/labels', '/stock', '/analytics', '/sales', '/shift', '/check', '/settings'].some((p) => pathname.startsWith(p))
 
   const side = ({ isActive }: { isActive: boolean }) => (isActive ? 'side-link active' : 'side-link')
   const bottom = ({ isActive }: { isActive: boolean }) => (isActive ? 'bn active' : 'bn')
@@ -64,6 +72,9 @@ export default function App() {
           </NavLink>
           <NavLink to="/receive" className={side}>
             <PackagePlus className="ico" /> {t('navReceive')}
+          </NavLink>
+          <NavLink to="/stock" className={side}>
+            <Warehouse className="ico" /> {t('navStock')}
           </NavLink>
           <NavLink to="/debts" className={side}>
             <BookOpen className="ico" /> {t('navDebts')}
@@ -103,6 +114,13 @@ export default function App() {
           <Route path="/debts" element={<Debts />} />
           <Route path="/debts/:id" element={<Customer />} />
           <Route path="/labels" element={<Labels />} />
+          <Route path="/stock" element={<Stock />} />
+          <Route path="/stock/suppliers" element={<Suppliers />} />
+          <Route path="/stock/writeoff" element={<Writeoff />} />
+          <Route path="/stock/expiry" element={<Expiry />} />
+          <Route path="/stock/inventory" element={<Inventory />} />
+          <Route path="/stock/order" element={<Order />} />
+          <Route path="/stock/reprice" element={<Reprice />} />
           <Route path="/analytics" element={<Analytics />} />
           <Route path="/sales" element={<Sales />} />
           <Route path="/sales/:id" element={<SaleDetail />} />

@@ -1,7 +1,18 @@
 import Dexie, { type DexieOptions, type Table } from 'dexie'
 
 export type Unit = 'pcs' | 'kg'
-export type Kind = 'product' | 'receipt' | 'customer' | 'sale' | 'ledger' | 'move' | 'refund' | 'shift'
+export type Kind =
+  | 'product'
+  | 'receipt'
+  | 'customer'
+  | 'sale'
+  | 'ledger'
+  | 'move'
+  | 'refund'
+  | 'shift'
+  | 'supplier'
+  | 'writeoff'
+  | 'inventory'
 
 export interface Product {
   id: string
@@ -22,6 +33,10 @@ export interface Product {
   labelPrintedAt: number
   /** Быстрая кнопка на кассе */
   quick?: boolean
+  /** Основной поставщик */
+  supplierId?: string
+  /** Ближайший срок годности остатка (начало дня) */
+  expiry?: number
 }
 
 export interface ReceiptItem {
@@ -29,12 +44,15 @@ export interface ReceiptItem {
   name: string
   qty: number
   buyPrice: number
+  /** Срок годности партии */
+  expiry?: number
 }
 
 export interface Receipt {
   id: string
   date: number
   supplier: string
+  supplierId?: string
   items: ReceiptItem[]
   total: number
 }
@@ -108,13 +126,41 @@ export interface Shift {
   updatedAt: number
 }
 
+export interface Supplier {
+  id: string
+  name: string
+  phone: string
+  note: string
+  updatedAt: number
+}
+
+export type WriteoffReason = 'expired' | 'damaged' | 'own' | 'other'
+
+/** Списание товара: просрочка, брак, личное использование. total — себестоимость. */
+export interface Writeoff {
+  id: string
+  date: number
+  reason: WriteoffReason
+  note: string
+  items: { productId: string; name: string; qty: number; buyPrice: number }[]
+  total: number
+}
+
+/** Инвентаризация: что ожидали по учёту и что насчитали. */
+export interface Inventory {
+  id: string
+  date: number
+  note: string
+  items: { productId: string; name: string; expected: number; counted: number; buyPrice: number }[]
+}
+
 /** Неизменяемое движение остатка: приход, продажа, корректировка. */
 export interface StockMove {
   id: string
   productId: string
   delta: number
   date: number
-  reason: 'initial' | 'adjust' | 'receipt' | 'sale' | 'return'
+  reason: 'initial' | 'adjust' | 'receipt' | 'sale' | 'return' | 'writeoff'
   refId?: string
 }
 
@@ -147,9 +193,12 @@ export const KIND_TABLE = {
   move: 'moves',
   refund: 'refunds',
   shift: 'shifts',
+  supplier: 'suppliers',
+  writeoff: 'writeoffs',
+  inventory: 'inventories',
 } as const
 
-const KIND_ORDER: Kind[] = ['product', 'customer', 'shift', 'receipt', 'sale', 'ledger', 'refund', 'move']
+const KIND_ORDER: Kind[] = ['product', 'customer', 'supplier', 'shift', 'receipt', 'sale', 'ledger', 'refund', 'writeoff', 'inventory', 'move']
 
 export class BerekeDB extends Dexie {
   products!: Table<Product, string>
@@ -160,6 +209,9 @@ export class BerekeDB extends Dexie {
   moves!: Table<StockMove, string>
   refunds!: Table<Refund, string>
   shifts!: Table<Shift, string>
+  suppliers!: Table<Supplier, string>
+  writeoffs!: Table<Writeoff, string>
+  inventories!: Table<Inventory, string>
   outbox!: Table<OutboxItem, string>
   meta!: Table<{ key: string; value: unknown }, string>
 
@@ -180,6 +232,11 @@ export class BerekeDB extends Dexie {
       ledger: 'id, customerId, date, saleId, shiftId',
       refunds: 'id, saleId, date, shiftId',
       shifts: 'id, openedAt',
+    })
+    this.version(3).stores({
+      suppliers: 'id, name',
+      writeoffs: 'id, date',
+      inventories: 'id, date',
     })
   }
 }
@@ -294,7 +351,7 @@ export type Store = ReturnType<typeof createStore>
 
 /** Все операции с данными. Принимает базу, чтобы в тестах можно было создать «два устройства». */
 export function createStore(db: BerekeDB) {
-  const ALL = () => [db.products, db.receipts, db.customers, db.sales, db.ledger, db.moves, db.refunds, db.shifts, db.outbox]
+  const ALL = () => [db.products, db.receipts, db.customers, db.sales, db.ledger, db.moves, db.refunds, db.shifts, db.suppliers, db.writeoffs, db.inventories, db.outbox]
 
   const queue = (kind: Kind, id: string, deleted = false) =>
     db.outbox.put({ key: `${kind}:${id}`, kind, id, deleted, ts: Date.now() + Math.random() })
@@ -369,7 +426,8 @@ export function createStore(db: BerekeDB) {
   /** Проводит приход товара: увеличивает остатки, обновляет закупочные цены. */
   async function commitReceipt(
     supplier: string,
-    lines: { product: Product; qty: number; buyPrice: number; sellPrice: number }[],
+    lines: { product: Product; qty: number; buyPrice: number; sellPrice: number; expiry?: number }[],
+    supplierId?: string,
   ): Promise<void> {
     await db.transaction('rw', ALL(), async () => {
       const now = Date.now()
@@ -382,6 +440,9 @@ export function createStore(db: BerekeDB) {
           cur.sellPrice = l.sellPrice
           cur.priceChangedAt = now
         }
+        if (supplierId) cur.supplierId = supplierId
+        // Срок годности: если на полке ещё лежит более ранняя партия, ближайший срок остаётся прежним
+        if (l.expiry && !(cur.stock > 0 && cur.expiry && cur.expiry < l.expiry)) cur.expiry = l.expiry
         cur.updatedAt = now
         await db.products.put(cur)
         await queue('product', cur.id)
@@ -391,8 +452,9 @@ export function createStore(db: BerekeDB) {
         id: receiptId,
         date: now,
         supplier: supplier.trim(),
+        supplierId,
         total: lines.reduce((s, l) => s + l.qty * l.buyPrice, 0),
-        items: lines.map((l) => ({ productId: l.product.id, name: l.product.name, qty: l.qty, buyPrice: l.buyPrice })),
+        items: lines.map((l) => ({ productId: l.product.id, name: l.product.name, qty: l.qty, buyPrice: l.buyPrice, expiry: l.expiry })),
       })
       await queue('receipt', receiptId)
     })
@@ -593,6 +655,104 @@ export function createStore(db: BerekeDB) {
     })
   }
 
+  // ---------- Склад: поставщики, списания, инвентаризация, переоценка ----------
+
+  async function saveSupplier(input: { id?: string; name: string; phone?: string; note?: string }): Promise<string> {
+    return db.transaction('rw', ALL(), async () => {
+      const id = input.id ?? uuid()
+      const old = await db.suppliers.get(id)
+      await db.suppliers.put({
+        id,
+        name: input.name.trim(),
+        phone: (input.phone ?? old?.phone ?? '').trim(),
+        note: (input.note ?? old?.note ?? '').trim(),
+        updatedAt: Date.now(),
+      })
+      await queue('supplier', id)
+      return id
+    })
+  }
+
+  async function deleteSupplier(id: string) {
+    await db.transaction('rw', ALL(), async () => {
+      await db.suppliers.delete(id)
+      await queue('supplier', id, true)
+    })
+  }
+
+  /** Списание: уменьшает остаток, записывает потерю по себестоимости. */
+  async function createWriteoff(
+    lines: { product: Product; qty: number }[],
+    reason: WriteoffReason,
+    note = '',
+  ): Promise<string | undefined> {
+    const valid = lines.filter((l) => l.qty > 0)
+    if (!valid.length) return undefined
+    return db.transaction('rw', ALL(), async () => {
+      const id = uuid()
+      const now = Date.now()
+      for (const l of valid) {
+        await addMove(l.product.id, -l.qty, 'writeoff', id)
+        // Остатка не осталось: срок годности больше не нужен
+        const cur = await db.products.get(l.product.id)
+        if (cur && cur.stock <= 0 && cur.expiry) {
+          await db.products.put({ ...cur, expiry: undefined, updatedAt: now })
+          await queue('product', cur.id)
+        }
+      }
+      await db.writeoffs.add({
+        id,
+        date: now,
+        reason,
+        note: note.trim(),
+        items: valid.map((l) => ({ productId: l.product.id, name: l.product.name, qty: l.qty, buyPrice: l.product.buyPrice })),
+        total: valid.reduce((s, l) => s + l.qty * l.product.buyPrice, 0),
+      })
+      await queue('writeoff', id)
+      return id
+    })
+  }
+
+  /** Проводит инвентаризацию: разницу между учётом и фактом записывает движением «корректировка». */
+  async function commitInventory(
+    lines: { productId: string; counted: number }[],
+    note = '',
+  ): Promise<{ id: string; shortage: number; surplus: number } | undefined> {
+    if (!lines.length) return undefined
+    return db.transaction('rw', ALL(), async () => {
+      const id = uuid()
+      const items: Inventory['items'] = []
+      let shortage = 0
+      let surplus = 0
+      for (const l of lines) {
+        const p = await db.products.get(l.productId)
+        if (!p) continue
+        const diff = round3(l.counted - p.stock)
+        items.push({ productId: p.id, name: p.name, expected: p.stock, counted: l.counted, buyPrice: p.buyPrice })
+        if (diff < 0) shortage += -diff * p.buyPrice
+        if (diff > 0) surplus += diff * p.buyPrice
+        if (diff !== 0) await addMove(p.id, diff, 'adjust', id)
+      }
+      if (!items.length) return undefined
+      await db.inventories.add({ id, date: Date.now(), note: note.trim(), items })
+      await queue('inventory', id)
+      return { id, shortage: Math.round(shortage), surplus: Math.round(surplus) }
+    })
+  }
+
+  /** Массовая смена цен продажи. Ценники у изменённых товаров помечаются к перепечати. */
+  async function repriceProducts(changes: { id: string; sellPrice: number }[]) {
+    await db.transaction('rw', ALL(), async () => {
+      const now = Date.now()
+      for (const c of changes) {
+        const p = await db.products.get(c.id)
+        if (!p || p.sellPrice === c.sellPrice) continue
+        await db.products.put({ ...p, sellPrice: c.sellPrice, priceChangedAt: now, updatedAt: now })
+        await queue('product', c.id)
+      }
+    })
+  }
+
   /** Массовый импорт товаров из таблицы: одна транзакция, остатки — через движения. */
   async function importProductsBulk(toAdd: Product[], toPut: Product[]) {
     await db.transaction('rw', ALL(), async () => {
@@ -655,7 +815,8 @@ export function createStore(db: BerekeDB) {
         return false
       }
       case 'customer':
-      case 'shift': {
+      case 'shift':
+      case 'supplier': {
         const t = db.table(KIND_TABLE[kind])
         if (deleted) {
           const had = await t.get(id)
@@ -673,6 +834,8 @@ export function createStore(db: BerekeDB) {
       case 'receipt':
       case 'sale':
       case 'refund':
+      case 'writeoff':
+      case 'inventory':
       case 'ledger': {
         const t = db.table(KIND_TABLE[kind])
         if (deleted) {
@@ -787,6 +950,11 @@ export function createStore(db: BerekeDB) {
     returnedQty,
     createRefund,
     setQuick,
+    saveSupplier,
+    deleteSupplier,
+    createWriteoff,
+    commitInventory,
+    repriceProducts,
     createCustomer,
     updateCustomer,
     deleteCustomer,
@@ -818,6 +986,11 @@ export const {
   returnedQty,
   createRefund,
   setQuick,
+  saveSupplier,
+  deleteSupplier,
+  createWriteoff,
+  commitInventory,
+  repriceProducts,
   createCustomer,
   updateCustomer,
   deleteCustomer,

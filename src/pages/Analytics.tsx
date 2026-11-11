@@ -79,7 +79,8 @@ export default function Analytics() {
     const balances = new Map<string, number>()
     await db.ledger.each((e) => balances.set(e.customerId, (balances.get(e.customerId) ?? 0) + (e.type === 'debt' ? e.amount : -e.amount)))
     const customers = await db.customers.toArray()
-    return { from, to, products, cur, prev, balances, customers }
+    const writeoffs = await db.writeoffs.where('date').between(from, to, true, false).toArray()
+    return { from, to, products, cur, prev, balances, customers, writeoffs }
   }, [period])
 
   const view = useMemo(() => {
@@ -94,11 +95,11 @@ export default function Analytics() {
       .map((c) => ({ c, bal: data.balances.get(c.id) ?? 0 }))
       .filter((x) => x.bal > 0)
       .sort((x, y) => y.bal - x.bal)
-    return { a, p, stock, days, debtors, debtTotal: debtors.reduce((s, x) => s + x.bal, 0) }
+    return { a, p, stock, days, debtors, debtTotal: debtors.reduce((s, x) => s + x.bal, 0), writeoffTotal: data.writeoffs.reduce((s, w) => s + w.total, 0) }
   }, [data])
 
   if (!data || !view) return null
-  const { a, p, stock, days, debtors, debtTotal } = view
+  const { a, p, stock, days, debtors, debtTotal, writeoffTotal } = view
 
   const periods: [Period, string][] = [
     ['today', t('filterToday')],
@@ -200,6 +201,7 @@ export default function Analytics() {
         {t('marginLabel')}: {Math.round(a.marginPct * 10) / 10}%
         {a.discounts > 0 && ` · ${t('discountsLabel')}: ${money(a.discounts)}`}
         {a.refunds > 0 && ` · ${t('refundsLabel')}: ${money(a.refunds)}`}
+        {writeoffTotal > 0 && ` · ${t('hubWriteoff')}: ${money(Math.round(writeoffTotal))}`}
       </div>
 
       {empty ? (
