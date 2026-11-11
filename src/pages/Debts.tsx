@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db, type Customer } from '../db'
+import { createCustomer, db } from '../db'
 import { useBalances } from '../hooks'
 import { money, useI18n } from '../i18n'
 
@@ -20,7 +20,7 @@ export default function Debts() {
   const rows = useMemo(() => {
     const needle = q.trim().toLowerCase()
     return (customers ?? [])
-      .map((c) => ({ c, bal: balances?.get(c.id!) ?? 0 }))
+      .map((c) => ({ c, bal: balances?.get(c.id) ?? 0 }))
       .filter(({ c, bal }) => {
         if (needle) return c.name.toLowerCase().includes(needle) || c.phone.includes(needle)
         return showAll || bal > 0
@@ -33,9 +33,8 @@ export default function Debts() {
 
   const create = async () => {
     if (!name.trim()) return setError(t('noName'))
-    const c: Customer = { name: name.trim(), phone: phone.trim(), createdAt: Date.now() }
-    const id = await db.customers.add(c)
-    nav(`/debts/${id}`)
+    const c = await createCustomer(name, phone)
+    nav(`/debts/${c.id}`)
   }
 
   return (

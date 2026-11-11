@@ -1,4 +1,4 @@
-import { db, newProduct, type Product } from './db'
+import { db, importProductsBulk, newProduct, type Product } from './db'
 
 /** Разбор CSV с кавычками. Разделитель определяется по первой строке. */
 export function parseCsv(text: string): string[][] {
@@ -111,10 +111,7 @@ export async function importProductsCsv(text: string): Promise<{ added: number; 
       toAdd.push(p)
     }
   }
-  await db.transaction('rw', db.products, async () => {
-    await db.products.bulkPut(toPut)
-    await db.products.bulkAdd(toAdd)
-  })
+  await importProductsBulk(toAdd, toPut)
   return { added: toAdd.length, updated: toPut.length, skipped }
 }
 

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { db, findByBarcode, newProduct, saveProduct, type Product, type Unit } from '../db'
+import { db, deleteProduct, findByBarcode, newProduct, saveProduct, type Product, type Unit } from '../db'
 import { generateInternalCode } from '../barcode'
 import { money, useI18n } from '../i18n'
 import Scanner from '../components/Scanner'
@@ -40,7 +40,7 @@ export default function ProductForm() {
 
   useEffect(() => {
     if (isNew) return
-    db.products.get(Number(id)).then((p) => {
+    db.products.get(id!).then((p) => {
       if (!p) return nav('/products', { replace: true })
       setBase(p)
       setName(p.name)
@@ -99,8 +99,8 @@ export default function ProductForm() {
   }
 
   const remove = async () => {
-    if (!base.id || !confirm(t('confirmDelete'))) return
-    await db.products.delete(base.id)
+    if (isNew || !confirm(t('confirmDelete'))) return
+    await deleteProduct(base.id)
     nav('/products', { replace: true })
   }
 

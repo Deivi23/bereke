@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from 'react'
 
 export interface CartLine {
-  productId: number
+  productId: string
   qty: number
 }
 
@@ -10,7 +10,7 @@ const KEY = 'cart'
 function load(): CartLine[] {
   try {
     const v = JSON.parse(localStorage.getItem(KEY) ?? '[]')
-    return Array.isArray(v) ? v : []
+    return Array.isArray(v) ? v.filter((l) => typeof l?.productId === 'string') : []
   } catch {
     return []
   }
@@ -31,15 +31,15 @@ function set(next: CartLine[]) {
 
 /** Корзина живёт вне страницы, поэтому не теряется при переключении вкладок. */
 export const cart = {
-  add(productId: number, qty = 1) {
+  add(productId: string, qty = 1) {
     const i = lines.findIndex((l) => l.productId === productId)
     if (i >= 0) set(lines.map((l, j) => (j === i ? { ...l, qty: Math.round((l.qty + qty) * 1000) / 1000 } : l)))
     else set([...lines, { productId, qty }])
   },
-  setQty(productId: number, qty: number) {
+  setQty(productId: string, qty: number) {
     set(lines.map((l) => (l.productId === productId ? { ...l, qty } : l)))
   },
-  remove(productId: number) {
+  remove(productId: string) {
     set(lines.filter((l) => l.productId !== productId))
   },
   clear() {

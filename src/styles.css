@@ -160,6 +160,10 @@ a.btn { text-decoration: none; }
 .modal-body { background: var(--bg); width: 100%; max-width: 720px; max-height: 88dvh; overflow-y: auto; border-radius: 18px 18px 0 0; padding: 14px 14px calc(18px + env(safe-area-inset-bottom)); }
 .modal-body h2 { margin-top: 4px; }
 
+.sync-badge { display: inline-block; font-size: 0.8rem; color: var(--muted); text-decoration: none; margin: 0 0 8px; }
+.sync-badge.warn { color: #b7791f; }
+.sync-badge.bad { color: var(--danger); }
+
 /* Нижнее меню */
 .tabbar {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 10;

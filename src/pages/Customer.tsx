@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { addLedger, balanceOf, db } from '../db'
+import { addLedger, balanceOf, db, deleteCustomer, updateCustomer } from '../db'
 import { fmtDate, money, useI18n } from '../i18n'
 import { num } from './ProductForm'
 
@@ -18,7 +18,7 @@ type Panel = null | 'pay' | 'debt' | 'edit'
 export default function Customer() {
   const { t } = useI18n()
   const nav = useNavigate()
-  const id = Number(useParams().id)
+  const id = useParams().id!
   const customer = useLiveQuery(() => db.customers.get(id), [id])
   const entries = useLiveQuery(() => db.ledger.where('customerId').equals(id).toArray(), [id])
   const [panel, setPanel] = useState<Panel>(null)
@@ -37,7 +37,7 @@ export default function Customer() {
   if (!customer || !entries) return null
 
   const balance = balanceOf(entries)
-  const sorted = [...entries].sort((a, b) => b.date - a.date || (b.id ?? 0) - (a.id ?? 0))
+  const sorted = [...entries].sort((a, b) => b.date - a.date || 0)
   const wa = waNumber(customer.phone)
   const reminder = t('reminderText').replace('{name}', customer.name).replace('{amount}', money(balance))
 
@@ -58,16 +58,13 @@ export default function Customer() {
 
   const saveEdit = async () => {
     if (!name.trim()) return
-    await db.customers.update(id, { name: name.trim(), phone: phone.trim() })
+    await updateCustomer(id, { name, phone })
     setPanel(null)
   }
 
   const remove = async () => {
     if (!confirm(t('confirmDeleteCustomer'))) return
-    await db.transaction('rw', db.customers, db.ledger, async () => {
-      await db.ledger.where('customerId').equals(id).delete()
-      await db.customers.delete(id)
-    })
+    await deleteCustomer(id)
     nav('/debts', { replace: true })
   }
 

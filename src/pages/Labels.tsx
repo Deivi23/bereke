@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db, type Product } from '../db'
+import { db, markLabelsPrinted, type Product } from '../db'
 import { money, useI18n } from '../i18n'
 import BarcodeSvg from '../components/BarcodeSvg'
 
@@ -41,10 +41,7 @@ export default function Labels() {
   }
 
   const markPrinted = async () => {
-    const now = Date.now()
-    await db.transaction('rw', db.products, async () => {
-      for (const i of items) await db.products.update(i.product.id!, { labelPrintedAt: now })
-    })
+    await markLabelsPrinted(items.map((i) => i.product.id))
     setItems([])
   }
 

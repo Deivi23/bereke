@@ -9,6 +9,7 @@ import Scanner from '../components/Scanner'
 import CodeInput from '../components/CodeInput'
 import QtyInput from '../components/QtyInput'
 import CustomerPicker from '../components/CustomerPicker'
+import SyncBadge from '../components/SyncBadge'
 import { num } from './ProductForm'
 
 type Flash = { ok: boolean; text: string; code?: string } | null
@@ -33,8 +34,8 @@ export default function Sell() {
   const ids = lines.map((l) => l.productId)
   const products = useLiveQuery(() => db.products.bulkGet(ids), [ids.join(',')])
   const byId = useMemo(() => {
-    const m = new Map<number, Product>()
-    products?.forEach((p) => p && m.set(p.id!, p))
+    const m = new Map<string, Product>()
+    products?.forEach((p) => p && m.set(p.id, p))
     return m
   }, [products])
 
@@ -57,7 +58,7 @@ export default function Sell() {
     setDone('')
     const p = await findByBarcode(code)
     if (p) {
-      cart.add(p.id!, 1)
+      cart.add(p.id, 1)
       if (sound) beep(true)
       setFlash({ ok: true, text: `${p.name} — ${money(p.sellPrice)}` })
     } else {
@@ -66,7 +67,7 @@ export default function Sell() {
     }
   }
 
-  const finish = async (pay: { cash: number; card: number; debt: number; customerId?: number }) => {
+  const finish = async (pay: { cash: number; card: number; debt: number; customerId?: string }) => {
     await completeSale(
       rows.map((r) => ({ product: r.product, qty: r.line.qty, price: r.product.sellPrice })),
       pay,
@@ -82,7 +83,7 @@ export default function Sell() {
   const paid = Math.min(Math.max(num(paidNow), 0), total)
   const debtPart = total - paid
 
-  const cancelSale = async (id: number) => {
+  const cancelSale = async (id: string) => {
     if (confirm(t('confirmVoid'))) await voidSale(id)
   }
 
@@ -96,6 +97,8 @@ export default function Sell() {
           </span>
         )}
       </div>
+
+      <SyncBadge />
 
       {camera ? (
         <>
@@ -126,7 +129,7 @@ export default function Sell() {
               <button
                 className="list-item"
                 onClick={() => {
-                  cart.add(p.id!, 1)
+                  cart.add(p.id, 1)
                   setQ('')
                   setDone('')
                 }}
@@ -159,12 +162,12 @@ export default function Sell() {
         <div className="card line" key={p.id}>
           <div className="row between">
             <b>{p.name}</b>
-            <button className="link" onClick={() => cart.remove(p.id!)}>
+            <button className="link" onClick={() => cart.remove(p.id)}>
               ✕
             </button>
           </div>
           <div className="row between">
-            <QtyInput value={line.qty} step={p.unit === 'kg' ? 0.1 : 1} onChange={(v) => cart.setQty(p.id!, v)} />
+            <QtyInput value={line.qty} step={p.unit === 'kg' ? 0.1 : 1} onChange={(v) => cart.setQty(p.id, v)} />
             <div className="line-sum">
               <div className="li-price">{money(Math.round(line.qty * p.sellPrice))}</div>
               <div className="muted small">
@@ -263,7 +266,7 @@ export default function Sell() {
                     {s.debt > 0 && ` · ${t('debtShort')} ${money(s.debt)}`}
                   </div>
                 </div>
-                <button className="link small" onClick={() => cancelSale(s.id!)}>
+                <button className="link small" onClick={() => cancelSale(s.id)}>
                   {t('voidSale')}
                 </button>
               </li>

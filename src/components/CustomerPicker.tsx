@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db, type Customer } from '../db'
+import { createCustomer, db, type Customer } from '../db'
 import { useBalances } from '../hooks'
 import { money, useI18n } from '../i18n'
 
@@ -24,9 +24,7 @@ export default function CustomerPicker({ onSelect }: { onSelect: (c: Customer) =
 
   const create = async () => {
     if (!name.trim()) return setError(t('noName'))
-    const c: Customer = { name: name.trim(), phone: phone.trim(), createdAt: Date.now() }
-    c.id = await db.customers.add(c)
-    onSelect(c)
+    onSelect(await createCustomer(name, phone))
   }
 
   if (creating) {
@@ -63,7 +61,7 @@ export default function CustomerPicker({ onSelect }: { onSelect: (c: Customer) =
       </div>
       <ul className="list">
         {shown.map((c) => {
-          const bal = balances?.get(c.id!) ?? 0
+          const bal = balances?.get(c.id) ?? 0
           return (
             <li key={c.id}>
               <button className="list-item" onClick={() => onSelect(c)}>

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { exportAll, importAll } from '../db'
 import { decodeBytes, exportProductsCsv, importProductsCsv } from '../csv'
 import { useI18n, type Lang } from '../i18n'
+import SyncCard from '../components/SyncCard'
 
 function download(name: string, content: string, type: string) {
   const url = URL.createObjectURL(new Blob([content], { type }))
@@ -66,6 +67,8 @@ export default function More() {
       <Link className="btn big block" to="/labels">
         🏷 {t('openLabels')}
       </Link>
+
+      <SyncCard />
 
       <div className="card">
         <b>{t('language')}</b>
